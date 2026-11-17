@@ -72,11 +72,14 @@ explicitly documented sensitivity analysis requires a different value.
 allocating the complete source state first. This option can use substantially
 more device memory for very large sample counts.
 
-## Encoder boundary in version 0.1
+## Encoder boundary
 
-Version 0.1 uses H5MU for paired input/output and validates the raw-count and
-binary matrix contract, but does not bundle dataset-specific
-scDiffusion/scDiffusion-X encoder weights. These weights require tightly pinned
-features, configurations, and scale factors. Until the audited bundle is
-released, users must place encoder latents in the explicit H5MU `obsm` keys;
-the package never performs hidden preprocessing or silently uses raw `X`.
+MultiFlow itself is trained on latent states. Since version 0.2 the package
+also contains the encoders of the paper: the paired RNA/ATAC autoencoder
+(`mf.train_autoencoder`) and, for cell-state generation, the RNA VAE
+(`mf.train_rna_vae`). `mf.encode` writes the latent states into the explicit
+H5MU `obsm` keys together with the encoder checksums and scale factors, and
+`mf.decode` refuses a reference whose features do not match the autoencoder.
+No pretrained encoder weights are bundled; the encoders are trained on the
+user's data. The flow never performs hidden preprocessing and never reads raw
+`X`: latent states from other encoders can be placed in the same `obsm` keys.

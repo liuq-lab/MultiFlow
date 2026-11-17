@@ -6,10 +6,10 @@ authors:
   - family-names: "Wang"
     given-names: "Haochen"
     email: "hcwang1996@gmail.com"
-version: 0.1.0
+version: 0.2.0
 license: MIT
 repository-code: "https://github.com/liuq-lab/MultiFlow"
-url: "https://github.com/liuq-lab/MultiFlow"
+url: "https://liuq-lab.github.io/MultiFlow/"
 keywords:
   - single-cell multiomics
   - flow matching

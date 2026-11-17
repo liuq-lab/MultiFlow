@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import warnings
+from collections.abc import Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -390,18 +391,30 @@ def validate_h5mu(
         _close_backed_h5mu(mdata)
 
 
+def read_obs(path: str | os.PathLike[str], *, modality: str = "rna") -> pd.DataFrame:
+    """Cell annotations of one modality, read without loading the count matrices."""
+    mdata = _open_h5mu(path, backed=True)
+    try:
+        return mdata[modality].obs.copy()
+    finally:
+        _close_backed_h5mu(mdata)
+
+
 def write_generated_h5mu(
     path: str | os.PathLike[str],
     rna_latent: np.ndarray,
     atac_latent: np.ndarray,
     *,
-    cell_type: str | None,
-    cell_type_code: int | None,
-    perturbation: str | None = None,
-    perturbation_code: int | None = None,
+    cell_type: str | Sequence[str] | None,
+    cell_type_code: int | Sequence[int] | None,
+    perturbation: str | Sequence[str] | None = None,
+    perturbation_code: int | Sequence[int] | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> Path:
-    """Write paired generated latent states as a self-describing H5MU file."""
+    """Write paired generated latent states as a self-describing H5MU file.
+
+    Labels are either one value for all cells or one value per cell.
+    """
     ad, mu = _require_h5mu_dependencies()
     rna = _dense_float32(rna_latent, name="generated RNA latent")
     atac = _dense_float32(atac_latent, name="generated ATAC latent")
@@ -412,12 +425,18 @@ def write_generated_h5mu(
         dtype=object,
     )
     obs = pd.DataFrame(index=obs_names)
-    if cell_type is not None:
-        obs["cell_type"] = np.asarray([cell_type] * rna.shape[0], dtype=object)
-        obs["cell_type_code"] = int(cell_type_code)
-    if perturbation is not None:
-        obs["perturbation"] = np.asarray([perturbation] * rna.shape[0], dtype=object)
-        obs["perturbation_code"] = int(perturbation_code)
+    for column, names, codes in (
+        ("cell_type", cell_type, cell_type_code),
+        ("perturbation", perturbation, perturbation_code),
+    ):
+        if names is None:
+            continue
+        if isinstance(names, str):
+            names, codes = [names] * rna.shape[0], [codes] * rna.shape[0]
+        if len(names) != rna.shape[0] or len(codes) != rna.shape[0]:
+            raise ValueError(f"{column} labels must have one entry per generated cell")
+        obs[column] = np.asarray(list(names), dtype=object)
+        obs[f"{column}_code"] = np.asarray(list(codes), dtype=np.int64)
     rna_adata = ad.AnnData(
         X=rna,
         obs=obs.copy(),
@@ -519,6 +538,112 @@ def write_toy_h5mu(path: str | os.PathLike[str], *, seed: int = 7) -> Path:
             "raw_rna_scale": "raw_counts",
             "raw_atac_scale": "binary",
             "latent_representation": DEFAULT_RNA_REPRESENTATION,
+            "seed": int(seed),
+        }
+        prepare_h5mu_for_write(mdata)
+        mdata.write_h5mu(destination)
+    return destination
+
+
+def simulate_h5mu(
+    path: str | os.PathLike[str],
+    *,
+    n_cells: int = 2400,
+    n_genes: int = 300,
+    n_peaks: int = 600,
+    n_cell_types: int = 4,
+    n_perturbations: int = 3,
+    seed: int = 0,
+) -> Path:
+    """Simulate a small paired RNA/ATAC dataset with cell types and perturbations.
+
+    The file follows the raw input contract (RNA counts, binary ATAC,
+    ``cell_type`` and, with ``n_perturbations > 0``, ``perturbation`` with a
+    ``control`` group). Cell types have their own expression and accessibility
+    programmes, every perturbation changes a subset of genes and peaks, and
+    RNA and ATAC of a cell share hidden factors. It is meant for trying the
+    tutorials in a minute on a CPU, not for biological conclusions.
+    """
+    ad, mu = _require_h5mu_dependencies()
+    if min(n_cells, n_genes, n_peaks, n_cell_types) < 1 or n_perturbations < 0:
+        raise ValueError("sizes must be positive")
+    rng = np.random.default_rng(seed)
+    type_names = [f"type {chr(ord('A') + index)}" for index in range(n_cell_types)]
+    perturbation_names = ["control"] + [f"KO{index + 1}" for index in range(n_perturbations)]
+    cell_type = rng.integers(0, n_cell_types, size=n_cells)
+    is_control = rng.random(n_cells) < (0.4 if n_perturbations else 1.0)
+    perturbation = np.where(
+        is_control, 0, rng.integers(1, max(n_perturbations, 1) + 1, size=n_cells)
+    )
+    n_factors = 3
+    factors = rng.normal(0.0, 1.0, size=(n_cells, n_factors))
+
+    def programme(n_features: int, scale: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        by_type = rng.normal(0.0, scale, size=(n_cell_types, n_features))
+        effect = np.zeros((len(perturbation_names), n_features))
+        for index in range(1, len(perturbation_names)):
+            touched = rng.choice(n_features, size=max(1, n_features // 5), replace=False)
+            effect[index, touched] = rng.normal(0.0, 1.5 * scale, size=touched.size)
+        loading = rng.normal(0.0, 0.3 * scale, size=(n_factors, n_features))
+        return by_type, effect, loading
+
+    gene_type, gene_effect, gene_loading = programme(n_genes, 0.8)
+    peak_type, peak_effect, peak_loading = programme(n_peaks, 1.2)
+    # the response is a little stronger or weaker depending on the cell type
+    strength = 1.0 + 0.3 * rng.normal(size=n_cell_types)[cell_type][:, None]
+    depth = np.exp(rng.normal(0.0, 0.25, size=(n_cells, 1)))
+    log_rate = (
+        rng.normal(0.3, 0.8, size=(1, n_genes))
+        + gene_type[cell_type]
+        + strength * gene_effect[perturbation]
+        + factors @ gene_loading
+    )
+    counts = rng.poisson(depth * np.exp(np.clip(log_rate, -6.0, 5.0))).astype(np.float32)
+    counts[counts.sum(axis=1) == 0, 0] = 1.0  # no cell without counts
+    logit = (
+        rng.normal(-2.0, 0.8, size=(1, n_peaks))
+        + peak_type[cell_type]
+        + strength * peak_effect[perturbation]
+        + factors @ peak_loading
+    )
+    accessibility = (rng.random((n_cells, n_peaks)) < 1.0 / (1.0 + np.exp(-logit))).astype(
+        np.float32
+    )
+
+    obs_names = pd.Index(
+        np.asarray([f"cell_{index:06d}" for index in range(n_cells)], dtype=object), dtype=object
+    )
+    obs = pd.DataFrame(
+        {"cell_type": np.asarray([type_names[index] for index in cell_type], dtype=object)},
+        index=obs_names,
+    )
+    if n_perturbations:
+        obs["perturbation"] = np.asarray(
+            [perturbation_names[index] for index in perturbation], dtype=object
+        )
+
+    def modality(matrix: np.ndarray, prefix: str) -> Any:
+        names = np.asarray(
+            [f"{prefix}_{index:04d}" for index in range(matrix.shape[1])], dtype=object
+        )
+        return ad.AnnData(
+            X=sparse.csr_matrix(matrix),
+            obs=obs.copy(),
+            var=pd.DataFrame(index=pd.Index(names, dtype=object)),
+        )
+
+    destination = Path(path).expanduser().resolve()
+    if destination.suffix.lower() != ".h5mu":
+        raise ValueError("simulated output must use the .h5mu suffix")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with _quiet_mudata_update_warnings():
+        mdata = mu.MuData(
+            {"rna": modality(counts, "gene"), "atac": modality(accessibility, "peak")}
+        )
+        mdata.uns["multiflow_example"] = {
+            "synthetic": True,
+            "raw_rna_scale": "raw_counts",
+            "raw_atac_scale": "binary",
             "seed": int(seed),
         }
         prepare_h5mu_for_write(mdata)

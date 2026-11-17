@@ -28,6 +28,7 @@ classifiers = [
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Topic :: Scientific/Engineering :: Bio-Informatics",
   "Operating System :: OS Independent",
 ]
@@ -42,19 +43,22 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/liuq-lab/MultiFlow"
+Homepage = "https://liuq-lab.github.io/MultiFlow/"
+Documentation = "https://liuq-lab.github.io/MultiFlow/"
 Repository = "https://github.com/liuq-lab/MultiFlow"
 Issues = "https://github.com/liuq-lab/MultiFlow/issues"
 
 [project.optional-dependencies]
-analysis = [
-  "scikit-learn>=1.2",
-]
-paper = [
-  "PyYAML>=6.0",
+# Figures in the tutorial notebooks.
+notebooks = [
+  "ipykernel>=6",
+  "matplotlib>=3.7",
   "scanpy>=1.9",
-  "scikit-learn>=1.2",
-  "scvi-tools>=1.1",
+]
+# The scIB iLISI reported next to the built-in metrics.
+ilisi = [
+  "scanpy>=1.9",
+  "scib>=1.1",
 ]
 dev = [
   "build>=1.2",
@@ -83,6 +87,7 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+extend-exclude = ["site"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

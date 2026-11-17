@@ -3,38 +3,33 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import json
-import warnings
-from dataclasses import asdict
 from pathlib import Path
 
 import numpy as np
 import torch
 
+from . import api
 from ._version import __version__
-from .checkpoint import load_checkpoint, save_checkpoint
+from .checkpoint import load_checkpoint
 from .datasets import DATASETS, download_dataset
 from .h5mu import (
     DEFAULT_ATAC_REPRESENTATION,
     DEFAULT_RNA_REPRESENTATION,
-    read_paired_latents,
-    sha256_file,
     validate_h5mu,
-    write_generated_h5mu,
     write_toy_h5mu,
 )
 from .legacy import migrate_legacy_checkpoint
-from .models import CellStateFlow, ConditionalConcatFlow, PerturbationFlow
 from .normalization import LatentStandardizer
 from .paper import (
     debias_perturbation_h5mu,
     decode_paper_h5mu,
     encode_paper_h5mu,
     prepare_perturbation_fold,
+    split_h5mu,
+    train_autoencoder_h5mu,
+    train_rna_vae_h5mu,
 )
-from .sampling import sample_paired_latents
-from .training import TrainingConfig, fit, seed_everything
 
 
 def _add_representation_arguments(parser: argparse.ArgumentParser) -> None:
@@ -70,6 +65,14 @@ def _parser() -> argparse.ArgumentParser:
     validate.add_argument("--condition-key", default="cell_type")
     _add_representation_arguments(validate)
     validate.add_argument("--json", dest="json_output", default=None)
+    split = data_commands.add_parser(
+        "split", help="write a condition-stratified train/test split of raw profiles"
+    )
+    split.add_argument("--input", required=True)
+    split.add_argument("--output-dir", required=True)
+    split.add_argument("--condition-key", default="cell_type")
+    split.add_argument("--train-fraction", type=float, default=0.8)
+    split.add_argument("--seed", type=int, default=20260717)
     example = data_commands.add_parser("example", help="create a tiny paired H5MU file")
     example.add_argument("--output", default="toy_multiflow.h5mu")
     example.add_argument("--seed", type=int, default=7)
@@ -174,9 +177,36 @@ def _parser() -> argparse.ArgumentParser:
 
     paper = subparsers.add_parser(
         "paper",
-        help="run the task-specific raw-profile encoder and decoder workflow",
+        help="train encoders, encode raw profiles and decode generated latents",
     )
     paper_commands = paper.add_subparsers(dest="paper_command", required=True)
+    train_ae = paper_commands.add_parser(
+        "train-autoencoder",
+        help="train the paired RNA/ATAC autoencoder on raw profiles",
+    )
+    train_ae.add_argument("--input", required=True, help="raw paired .h5mu file")
+    train_ae.add_argument("--output-dir", required=True)
+    train_ae.add_argument("--condition-key", default="cell_type")
+    train_ae.add_argument("--epochs", type=int, default=300)
+    train_ae.add_argument("--batch-size", type=int, default=256)
+    train_ae.add_argument("--seed", type=int, default=20260717)
+    train_ae.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    train_vae = paper_commands.add_parser(
+        "train-rna-vae",
+        help="train the RNA VAE used for cell-state generation",
+    )
+    train_vae.add_argument("--input", required=True, help="raw paired .h5mu file")
+    train_vae.add_argument("--output-dir", required=True)
+    train_vae.add_argument(
+        "--scimilarity-model-dir",
+        default=None,
+        help="SCimilarity annotation model used to initialise the hidden layers (paper setting)",
+    )
+    train_vae.add_argument("--max-steps", type=int, default=200_000)
+    train_vae.add_argument("--checkpoint-every", type=int, default=50_000)
+    train_vae.add_argument("--batch-size", type=int, default=128)
+    train_vae.add_argument("--seed", type=int, default=1234)
+    train_vae.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     encode = paper_commands.add_parser(
         "encode",
         help="encode raw RNA/ATAC profiles with the paper encoders",
@@ -184,10 +214,10 @@ def _parser() -> argparse.ArgumentParser:
     encode.add_argument("--task", choices=["generation", "perturbation"], required=True)
     encode.add_argument("--input", required=True)
     encode.add_argument("--output", required=True)
-    encode.add_argument("--scdiffusion-x-root", required=True)
-    encode.add_argument("--multimodal-ae-checkpoint", required=True)
-    encode.add_argument("--encoder-config", required=True)
-    encode.add_argument("--rna-vae-checkpoint", default=None)
+    encode.add_argument(
+        "--autoencoder", "--multimodal-ae-checkpoint", dest="autoencoder", required=True
+    )
+    encode.add_argument("--rna-vae", "--rna-vae-checkpoint", dest="rna_vae", default=None)
     encode.add_argument("--condition-key", default="cell_type")
     encode.add_argument("--batch-size", type=int, default=2048)
     encode.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
@@ -226,10 +256,10 @@ def _parser() -> argparse.ArgumentParser:
     decode.add_argument("--input", required=True, help="generated latent H5MU")
     decode.add_argument("--reference", required=True, help="encoded training H5MU")
     decode.add_argument("--output", required=True)
-    decode.add_argument("--scdiffusion-x-root", required=True)
-    decode.add_argument("--multimodal-ae-checkpoint", required=True)
-    decode.add_argument("--encoder-config", required=True)
-    decode.add_argument("--rna-vae-checkpoint", default=None)
+    decode.add_argument(
+        "--autoencoder", "--multimodal-ae-checkpoint", dest="autoencoder", required=True
+    )
+    decode.add_argument("--rna-vae", "--rna-vae-checkpoint", dest="rna_vae", default=None)
     decode.add_argument("--condition-key", default="cell_type")
     decode.add_argument("--batch-size", type=int, default=2048)
     decode.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
@@ -237,269 +267,70 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _write_json(path: Path, value: dict[str, object]) -> None:
-    path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-
-def _run_directory(path: str) -> Path:
-    run = Path(path).expanduser().resolve()
-    if run.exists() and any(run.iterdir()):
-        raise FileExistsError(f"run directory is not empty: {run}")
-    run.mkdir(parents=True, exist_ok=True)
-    return run
-
-
-def _check_run_target(path: str) -> None:
-    run = Path(path).expanduser().resolve()
-    if run.exists() and any(run.iterdir()):
-        raise FileExistsError(f"run directory is not empty: {run}")
-
-
 def _default_sampling_steps(model_type: str) -> int:
     """Return the notebook-aligned midpoint solver budget."""
-    return 50 if model_type == "perturbation" else 100
+    return api.default_sampling_steps(model_type)
 
 
 def _train(args: argparse.Namespace) -> None:
-    input_path = Path(args.input).expanduser().resolve()
-    if input_path.suffix.lower() != ".h5mu":
-        raise ValueError("MultiFlow training input must be a paired .h5mu file")
-    _check_run_target(args.output)
-    condition_key = None if args.unconditional else args.condition_key
-    data = read_paired_latents(
-        input_path,
-        rna_representation=args.rna_representation,
-        atac_representation=args.atac_representation,
-        condition_key=condition_key,
+    run = api.train(
+        args.input,
+        args.output,
+        model=args.model,
+        condition_key=None if args.unconditional else args.condition_key,
         perturbation_key=args.perturbation_key,
-        context_matrix_key=args.context_matrix_key,
-        context_classes_key=args.context_classes_key,
         control_perturbation=args.control_perturbation,
-    )
-    if args.model == "perturbation" and args.perturbation_key is None:
-        raise ValueError("--model perturbation requires --perturbation-key")
-    if args.model != "perturbation" and args.perturbation_key is not None:
-        raise ValueError("--perturbation-key is accepted only by --model perturbation")
-    seed_everything(args.seed)
-    num_classes = None if data.labels is None else len(data.label_classes)
-    if args.model == "cell-state":
-        model = CellStateFlow(
-            data.rna.shape[1],
-            data.atac.shape[1],
-            hidden_dim=args.hidden_dim,
-            num_blocks=args.num_blocks,
-            num_classes=num_classes,
-            cross_attention_dim=args.cross_attention_dim,
-        )
-    elif args.model == "perturbation":
-        if data.context_matrix is None:
-            raise ValueError("perturbation training requires a context matrix")
-        model = PerturbationFlow(
-            data.rna.shape[1],
-            data.atac.shape[1],
-            torch.as_tensor(data.context_matrix),
-            hidden_dim=args.hidden_dim,
-            num_blocks=args.num_blocks,
-            cross_attention_dim=args.cross_attention_dim,
-            num_perturbations=len(data.perturbation_classes),
-        )
-    else:
-        model = ConditionalConcatFlow(
-            data.rna.shape[1],
-            data.atac.shape[1],
-            hidden_dim=args.hidden_dim,
-            num_layers=args.num_layers,
-            num_classes=num_classes,
-        )
-
-    config = TrainingConfig(
         epochs=args.epochs,
         batch_size=args.batch_size,
         learning_rate=args.learning_rate,
-        device=args.device,
-        seed=args.seed,
+        hidden_dim=args.hidden_dim,
+        num_blocks=args.num_blocks,
+        num_layers=args.num_layers,
+        cross_attention_dim=args.cross_attention_dim,
+        sampling_steps=args.sampling_steps,
         standardize=not args.no_standardize,
-        reseed=False,
+        seed=args.seed,
+        device=args.device,
+        hash_input=args.hash_input,
+        rna_representation=args.rna_representation,
+        atac_representation=args.atac_representation,
+        context_matrix_key=args.context_matrix_key,
+        context_classes_key=args.context_classes_key,
+        verbose=False,
     )
-    result = fit(
-        model,
-        data.rna,
-        data.atac,
-        labels=data.labels,
-        perturbations=data.perturbations,
-        config=config,
-    )
-    run = _run_directory(args.output)
-    input_metadata: dict[str, object] = {
-        "name": input_path.name,
-        "size_bytes": input_path.stat().st_size,
-    }
-    if args.hash_input:
-        input_metadata["sha256"] = sha256_file(input_path)
-    default_sampling_steps = (
-        int(args.sampling_steps)
-        if args.sampling_steps is not None
-        else _default_sampling_steps(args.model)
-    )
-    metadata: dict[str, object] = {
-        "schema_version": 1,
-        "input": input_metadata,
-        "h5mu_contract": {
-            "rna_representation": args.rna_representation,
-            "atac_representation": args.atac_representation,
-            "condition_key": condition_key,
-            "perturbation_key": args.perturbation_key,
-            "control_perturbation": (
-                args.control_perturbation if args.perturbation_key is not None else None
-            ),
-            "paired_cells": int(data.rna.shape[0]),
-        },
-        "label_classes": data.label_classes,
-        "perturbation_classes": data.perturbation_classes,
-        "training": asdict(config),
-        "sampling": {"default_steps": default_sampling_steps},
-    }
-    checkpoint = save_checkpoint(
-        run / "model.pt",
-        result.model,
-        standardizer=result.standardizer,
-        optimizer=result.optimizer,
-        epoch=args.epochs,
-        history=result.history,
-        metadata=metadata,
-    )
-    history_path = run / "history.csv"
-    with history_path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=result.history[0].keys())
-        writer.writeheader()
-        writer.writerows(result.history)
-    manifest = {
-        "package_version": __version__,
-        "checkpoint": checkpoint.name,
-        "checkpoint_sha256": sha256_file(checkpoint),
-        "model_config": result.model.get_config(),
-        **metadata,
-    }
-    _write_json(run / "run.json", manifest)
     print(f"saved run: {run}")
-    print(f"  checkpoint: {checkpoint.name}")
-    print(f"  history: {history_path.name}")
+    print("  checkpoint: model.pt")
+    print("  history: history.csv")
     print("  manifest: run.json")
 
 
-def _resolve_named_condition(
-    value: str | None,
-    classes: list[str],
-    *,
-    name: str,
-    required: bool,
-) -> tuple[int | None, str | None]:
-    if not classes:
-        if value is not None:
-            raise ValueError(f"--{name} was provided to an unconditional run")
-        return None, None
-    if value is None:
-        if required:
-            raise ValueError(f"--{name} is required; choose from {classes}")
-        return 0, classes[0]
-    try:
-        index = classes.index(value)
-    except ValueError as exc:
-        raise ValueError(f"unknown {name} {value!r}; choose from {classes}") from exc
-    return index, value
-
-
 def _generate(args: argparse.Namespace) -> None:
-    run = Path(args.run).expanduser().resolve()
-    checkpoint = run / "model.pt" if run.is_dir() else run
-    model, standardizer, payload = load_checkpoint(checkpoint, map_location=args.device)
-    metadata = payload.get("metadata", {})
-    label_classes = list(metadata.get("label_classes", []))
-    perturbation_classes = list(metadata.get("perturbation_classes", []))
-    model_config = model.get_config()
-    expected_labels = (
-        model_config.get("num_contexts")
-        if model_config.get("model_type") == "perturbation"
-        else model_config.get("num_classes")
-    )
-    expected_perturbations = (
-        model_config.get("num_perturbations")
-        if model_config.get("model_type") == "perturbation"
-        else None
-    )
-    for mapping_name, classes, expected in (
-        ("label_classes", label_classes, expected_labels),
-        ("perturbation_classes", perturbation_classes, expected_perturbations),
-    ):
-        if expected is None or (mapping_name == "perturbation_classes" and int(expected) == 1):
-            continue
-        if len(classes) != int(expected):
-            raise ValueError(
-                f"checkpoint requires {int(expected)} {mapping_name}, but contains "
-                f"{len(classes)}; remigrate the checkpoint with --{mapping_name.replace('_', '-')}"
-            )
-    label_code, label_name = _resolve_named_condition(
-        args.cell_type,
-        label_classes,
-        name="cell-type",
-        required=bool(label_classes),
-    )
-    perturbation_code, perturbation_name = _resolve_named_condition(
-        args.perturbation,
-        perturbation_classes,
-        name="perturbation",
-        required=bool(perturbation_classes),
-    )
-    fallback_steps = _default_sampling_steps(str(model_config.get("model_type")))
-    default_steps = int(metadata.get("sampling", {}).get("default_steps", fallback_steps))
-    steps = default_steps if args.steps is None else int(args.steps)
-    standardizer_present = standardizer is not None
-    standardization_inverted = standardizer_present and not args.keep_standardized
-    if not standardizer_present and "legacy_migration" in metadata:
-        warnings.warn(
-            "legacy checkpoint has no latent standardizer; generated values remain "
-            "in the model's recorded output space",
-            RuntimeWarning,
-            stacklevel=2,
-        )
-    rna, atac = sample_paired_latents(
-        model,
-        args.n,
-        label=label_code,
-        perturbation=perturbation_code,
-        steps=steps,
+    destination = api.generate(
+        args.run,
+        args.output,
+        n=args.n,
+        cell_type=args.cell_type,
+        perturbation=args.perturbation,
+        steps=args.steps,
         batch_size=args.batch_size,
-        device=args.device,
         seed=args.seed,
-        standardizer=standardizer if standardization_inverted else None,
+        device=args.device,
+        keep_standardized=args.keep_standardized,
         rng_mode=args.rng_mode,
     )
-    output_metadata = {
-        "schema_version": 1,
-        "package_version": __version__,
-        "output_space": "latent",
-        "checkpoint_sha256": sha256_file(checkpoint),
-        "model_config": model_config,
-        "seed": int(args.seed),
-        "ode_steps": steps,
-        "batch_size": int(args.batch_size),
-        "rng_mode": args.rng_mode,
-        "standardizer_present": standardizer_present,
-        "standardization_inverted": standardization_inverted,
-        "label_classes": label_classes,
-        "perturbation_classes": perturbation_classes,
-    }
-    destination = write_generated_h5mu(
-        args.output,
-        rna.numpy(),
-        atac.numpy(),
-        cell_type=label_name,
-        cell_type_code=label_code,
-        perturbation=perturbation_name,
-        perturbation_code=perturbation_code,
-        metadata=output_metadata,
-    )
     print(f"saved paired generated H5MU: {destination}")
+
+
+def _split_data(args: argparse.Namespace) -> None:
+    train, test = split_h5mu(
+        input_path=args.input,
+        output_dir=args.output_dir,
+        condition_key=args.condition_key,
+        train_fraction=args.train_fraction,
+        seed=args.seed,
+    )
+    print(f"saved {train}")
+    print(f"saved {test}")
 
 
 def _validate_data(args: argparse.Namespace) -> None:
@@ -520,7 +351,7 @@ def _validate_data(args: argparse.Namespace) -> None:
     if not report["latent_ready"]:
         print(
             "note: raw paired data are valid, but encoder latents are absent; "
-            "run `multiflow paper encode` before flow training"
+            "run `multiflow paper encode` (or `multiflow_omics.encode`) before flow training"
         )
 
 
@@ -592,15 +423,36 @@ def _migrate(args: argparse.Namespace) -> None:
 
 
 def _paper(args: argparse.Namespace) -> None:
-    if args.paper_command == "encode":
+    if args.paper_command == "train-autoencoder":
+        output = train_autoencoder_h5mu(
+            input_path=args.input,
+            output_dir=args.output_dir,
+            condition_key=args.condition_key,
+            epochs=args.epochs,
+            batch_size=args.batch_size,
+            seed=args.seed,
+            device=args.device,
+        )
+        print(f"saved autoencoder: {output}")
+    elif args.paper_command == "train-rna-vae":
+        output = train_rna_vae_h5mu(
+            input_path=args.input,
+            output_dir=args.output_dir,
+            scimilarity_model_dir=args.scimilarity_model_dir,
+            max_steps=args.max_steps,
+            checkpoint_every=args.checkpoint_every,
+            batch_size=args.batch_size,
+            seed=args.seed,
+            device=args.device,
+        )
+        print(f"saved RNA VAE: {output}")
+    elif args.paper_command == "encode":
         output = encode_paper_h5mu(
             input_path=args.input,
             output_path=args.output,
             task=args.task,
-            scdiffusionx_root=args.scdiffusion_x_root,
-            multimodal_ae_checkpoint=args.multimodal_ae_checkpoint,
-            encoder_config=args.encoder_config,
-            rna_vae_checkpoint=args.rna_vae_checkpoint,
+            autoencoder_checkpoint=args.autoencoder,
+            rna_vae_checkpoint=args.rna_vae,
             condition_key=args.condition_key,
             device=args.device,
             batch_size=args.batch_size,
@@ -636,10 +488,8 @@ def _paper(args: argparse.Namespace) -> None:
             reference_path=args.reference,
             output_path=args.output,
             task=args.task,
-            scdiffusionx_root=args.scdiffusion_x_root,
-            multimodal_ae_checkpoint=args.multimodal_ae_checkpoint,
-            encoder_config=args.encoder_config,
-            rna_vae_checkpoint=args.rna_vae_checkpoint,
+            autoencoder_checkpoint=args.autoencoder,
+            rna_vae_checkpoint=args.rna_vae,
             condition_key=args.condition_key,
             device=args.device,
             batch_size=args.batch_size,
@@ -656,6 +506,8 @@ def main(argv: list[str] | None = None) -> None:
         _download_data(args)
     elif args.command == "data" and args.data_command == "validate":
         _validate_data(args)
+    elif args.command == "data" and args.data_command == "split":
+        _split_data(args)
     elif args.command == "data":
         _example_data(args)
     elif args.command == "train":

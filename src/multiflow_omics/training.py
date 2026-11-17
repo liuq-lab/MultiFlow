@@ -108,8 +108,11 @@ def fit(
     labels: np.ndarray | torch.Tensor | None = None,
     perturbations: np.ndarray | torch.Tensor | None = None,
     config: TrainingConfig | None = None,
+    verbose: bool = False,
 ) -> TrainingResult:
     """Fit a MultiFlow vector field to paired latent states.
+
+    ``verbose=True`` prints the two losses about ten times during the run.
 
     Inputs are target latent states.  For the canonical models, one joint
     Gaussian source in the concatenated RNA-ATAC latent space and a uniform
@@ -230,4 +233,11 @@ def fit(
                 "loss_total": (rna_loss_sum + atac_loss_sum) / batches,
             }
         )
+        every = max(1, config.epochs // 10)
+        if verbose and (epoch == 0 or (epoch + 1) % every == 0 or epoch + 1 == config.epochs):
+            print(
+                f"multiflow epoch {epoch + 1}/{config.epochs}  "
+                f"rna {history[-1]['loss_rna']:.4f}  atac {history[-1]['loss_atac']:.4f}",
+                flush=True,
+            )
     return TrainingResult(model, optimizer, history, standardizer)

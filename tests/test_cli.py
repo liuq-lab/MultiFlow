@@ -184,7 +184,7 @@ def test_cli_rejects_unknown_cell_type(tmp_path):
             "cpu",
         ]
     )
-    with pytest.raises(ValueError, match="unknown cell-type"):
+    with pytest.raises(ValueError, match="unknown cell_type"):
         main(
             [
                 "generate",

@@ -73,23 +73,21 @@ def test_cli_routes_decode_to_paper_workflow(monkeypatch, tmp_path, capsys) -> N
             "encoded.h5mu",
             "--output",
             "profiles.h5mu",
-            "--scdiffusion-x-root",
-            "external/scDiffusion-X",
-            "--multimodal-ae-checkpoint",
-            "final.ckpt",
-            "--encoder-config",
-            "encoder.yaml",
-            "--rna-vae-checkpoint",
+            "--autoencoder",
+            "autoencoder.pt",
+            "--rna-vae",
             "rna.pt",
         ]
     )
     assert captured["task"] == "generation"
+    assert captured["autoencoder_checkpoint"] == "autoencoder.pt"
+    assert captured["rna_vae_checkpoint"] == "rna.pt"
     assert captured["generated_path"] == "generated.h5mu"
     assert captured["reference_path"] == "encoded.h5mu"
     assert "saved decoded RNA/ATAC profiles" in capsys.readouterr().out
 
 
-def test_sparse_library_statistics_match_scdiffusionx_definition() -> None:
+def test_sparse_library_statistics_use_sample_standard_deviation() -> None:
     obs = pd.DataFrame(
         {"cell_type": ["B", "B", "T", "T"]},
         index=pd.Index(np.asarray(["a", "b", "c", "d"], dtype=object)),

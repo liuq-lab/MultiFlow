@@ -1,51 +1,68 @@
 # Release guide
 
-Before publishing, confirm institutional intellectual-property requirements
-and add the paper citation when it becomes available.
+The package is published on PyPI as `multiflow-omics` by the GitHub workflow
+`.github/workflows/publish.yml`, which runs when a GitHub release is published.
+No API token is stored anywhere: PyPI trusts the workflow directly ("Trusted
+Publishing").
 
-## 1. Create the GitHub repository
+## 1. One-time setup on PyPI
 
-From this clean directory only:
+1. Sign in at <https://pypi.org> with the account that should own the project.
+2. Open *Your account → Publishing* and add a **pending publisher** with:
+
+   | Field | Value |
+   |---|---|
+   | PyPI project name | `multiflow-omics` |
+   | Owner | `liuq-lab` |
+   | Repository name | `MultiFlow` |
+   | Workflow name | `publish.yml` |
+   | Environment name | `pypi` |
+
+For a rehearsal, do the same at <https://test.pypi.org> with workflow
+`testpypi.yml` and environment `testpypi`.
+
+## 2. Before a release
+
+1. Set the version in `src/multiflow_omics/_version.py` and `CITATION.cff`,
+   and move the entries of `CHANGELOG.md` under that version.
+2. Check locally:
+
+   ```bash
+   python -m pip install -e ".[dev]"
+   ruff check .
+   pytest
+   python -m build
+   twine check dist/*
+   ```
+
+3. Install the wheel into a new environment and run the quick start of the
+   README.
+4. Commit and push to `main`; wait for the CI workflow to pass.
+
+## 3. Rehearsal on TestPyPI (optional)
+
+Run the workflow *Publish to TestPyPI* from the Actions tab, then:
 
 ```bash
-git init
-git add .
-git commit -m "Initial public MultiFlow release"
-git branch -M main
-git remote add origin https://github.com/liuq-lab/MultiFlow.git
-git push -u origin main
+python -m pip install --index-url https://test.pypi.org/simple/ \
+  --extra-index-url https://pypi.org/simple/ multiflow-omics
 ```
 
-Do not copy Git history from the 22 GB experimental directory without a
-separate history and secret scan.
+A version number can be uploaded only once, on TestPyPI as on PyPI.
 
-## 2. Validate locally
+## 4. Release
+
+On GitHub, *Releases → Draft a new release*: create the tag `v<version>` (for
+example `v0.2.0`) on `main`, paste the changelog entry and publish. The
+workflow *Publish to PyPI* builds the distributions, runs the tests and
+uploads them. Afterwards:
 
 ```bash
-python -m pip install -e ".[dev]"
-pytest
-ruff check .
-python -m build
-twine check dist/*
+python -m pip install multiflow-omics
 ```
 
-Install the wheel into a new environment and run the CLI smoke test before
-tagging a release.
+## 5. Large files
 
-## 3. Configure Trusted Publishing
-
-On TestPyPI and PyPI, create a pending Trusted Publisher for the GitHub owner,
-repository `MultiFlow`, workflow filenames `testpypi.yml` and `publish.yml`,
-and environments `testpypi` and `pypi`, respectively. No long-lived API token
-is required.
-
-Run the TestPyPI workflow manually first. After verifying installation from
-TestPyPI, create a GitHub release tagged `v0.1.0`; the production workflow is
-triggered only by a published GitHub release.
-
-## 4. Store large assets elsewhere
-
-H5AD/H5MU files, latent NPZ files, encoder checkpoints, generated results, and
-trained weights are excluded from Git and the wheel. Publish permitted model
-weights through Zenodo or a GitHub Release, provide SHA256 checksums, and link
-them from a model card.
+H5AD/H5MU files, latent arrays, encoder checkpoints, generated results and
+trained weights are excluded from Git and from the distributions. Publish
+permitted data or weights through Zenodo or a GitHub release, with checksums.

@@ -19,14 +19,24 @@ upstream revision was:
 - relevant package source:
   `scdiffusionX/src/scdiffusionX/DiffusionBackbone/`
 
+The paired RNA/ATAC autoencoder in `src/multiflow_omics/autoencoder.py` is a
+port of the multimodal autoencoder of the same scDiffusion-X revision (relevant
+source: `scdiffusionX/src/scdiffusionX/Autoencoder/`, in particular
+`models/base/encoder_model.py`, `models/base/utils.py` and
+`data/scrnaseq_loader.py`). Layer layout, parameter names, likelihoods and
+training settings are unchanged, so checkpoints written by scDiffusion-X load
+without conversion; the PyTorch Lightning, Hydra and scvi-tools dependencies of
+the original were replaced by plain PyTorch. scDiffusion-X is not installed
+and not imported by MultiFlow.
+
 The audited scDiffusion-X checkout contains an MIT license at the repository
 root and a BSD 3-Clause license inside the Python package. Their precise scope
 should be confirmed with the upstream maintainers. Until then, both notices are
 retained for the adapted portions.
 
 The RNA VAE architecture and SCimilarity checkpoint-loading rules in
-`src/multiflow_omics/paper_encoders.py` and its training workflow were adapted
-from the scDiffusion repository:
+`src/multiflow_omics/paper_encoders.py` and its training loop in
+`src/multiflow_omics/paper.py` were adapted from the scDiffusion repository:
 
 - scDiffusion, <https://github.com/EperLuo/scDiffusion>
 - relevant source: `VAE/VAE_model.py`, `VAE/VAE_train.py` and

@@ -56,11 +56,18 @@ CLI round trips.
   flow still consumes those explicit derived representations.
 - Generation RNA uses the scDiffusion/SCimilarity VAE after
   `normalize_total(1e4)+log1p`. Generation ATAC uses the binary branch of the
-  scDiffusion-X multimodal AE. Perturbation uses the multimodal AE for both raw
+  paired autoencoder. Perturbation uses the paired autoencoder for both raw
   RNA counts and binary ATAC. These task-specific scales are not interchangeable.
-- The release includes the audited RNA VAE architecture and wrappers around a
-  pinned scDiffusion-X checkout. It does not bundle pretrained weights or large
-  data files. The processed GSE274113 H5MU is distributed separately through
+- The release includes the audited RNA VAE architecture and a port of the
+  scDiffusion-X multimodal autoencoder (`multiflow_omics.autoencoder`). The
+  port keeps the layer layout and parameter names, so a checkpoint written by
+  scDiffusion-X loads without conversion. With the same seed and inputs, the
+  port and the original modules give identical initial weights, latent states
+  and decoder outputs, and the training loss is assembled in the same way; the
+  negative-binomial log-likelihood, which the original takes from scvi-tools,
+  was checked against `torch.distributions`. scDiffusion-X itself is neither
+  installed nor imported. The release does not bundle pretrained weights or
+  large data files. The processed GSE274113 H5MU is distributed separately through
   the version-pinned Zenodo record
   [10.5281/zenodo.21986866](https://doi.org/10.5281/zenodo.21986866).
 - `multiflow paper prepare-perturbation-fold` reproduces the executed notebook:
