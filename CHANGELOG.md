@@ -30,6 +30,8 @@ multiflow-omics` is all that is needed for both workflows of the paper.
 - `simulate_h5mu` (a small simulated perturbation dataset) and `read_obs`.
 - Two tutorial notebooks in `tutorials/` that reproduce the generation and the
   perturbation benchmark from the raw data.
+- `tutorials/run_on_slurm.sh`: sets up an environment, links or downloads the
+  data and submits both notebooks as Slurm jobs with one command.
 - Commands `multiflow paper train-autoencoder`, `multiflow paper train-rna-vae`
   and `multiflow data split`.
 

@@ -53,3 +53,6 @@ wandb/
 *.temp
 *.bak
 ~$*
+
+# Work folder of tutorials/run_on_slurm.sh
+tutorial_work/

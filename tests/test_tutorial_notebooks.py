@@ -7,6 +7,7 @@ both notebooks in their quick mode (about two minutes on a CPU).
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -29,6 +30,15 @@ def test_both_tutorials_are_present() -> None:
         "generation_openproblems.ipynb",
         "perturbation_gse274113.ipynb",
     ]
+
+
+def test_slurm_runner_knows_both_notebooks() -> None:
+    script = (TUTORIALS / "run_on_slurm.sh").read_text(encoding="utf-8")
+    assert "\r" not in script
+    for path in NOTEBOOKS:
+        assert path.stem in script
+    if shutil.which("bash"):
+        subprocess.run(["bash", "-n", str(TUTORIALS / "run_on_slurm.sh")], check=True)
 
 
 @pytest.mark.parametrize("path", NOTEBOOKS, ids=lambda path: path.stem)

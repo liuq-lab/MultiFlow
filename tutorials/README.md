@@ -22,37 +22,56 @@ MULTIFLOW_QUICK=1 jupyter nbconvert --to notebook --execute \
   --output quick_check.ipynb tutorials/perturbation_gse274113.ipynb
 ```
 
-## Full run
+A notebook keeps its files next to itself: datasets under `data/` and results
+under `runs/` in the folder that holds the notebook, also when it is executed
+from another folder. Copy the notebook to a disk with enough space before a
+full run (about 30 GB for generation, 100 GB for perturbation).
 
-The full runs need a GPU and several hours, so run them as a batch job rather
-than in an interactive session. Each step writes a file and is skipped when
-that file exists; an interrupted job continues where it stopped when it is
-submitted again.
+## Full run on a Slurm cluster
 
-```bash
-jupyter nbconvert --to notebook --execute --inplace \
-  --ExecutePreprocessor.timeout=-1 tutorials/generation_openproblems.ipynb
-```
-
-On a Slurm cluster, for example:
+The full runs need a GPU and several hours. One command sets everything up and
+submits one job per notebook:
 
 ```bash
-#!/bin/bash
-#SBATCH --job-name=multiflow-tutorial
-#SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=128G
-#SBATCH --time=24:00:00
-
-cd /path/to/MultiFlow
-jupyter nbconvert --to notebook --execute --inplace \
-  --ExecutePreprocessor.timeout=-1 tutorials/perturbation_gse274113.ipynb
+git clone https://github.com/liuq-lab/MultiFlow.git && cd MultiFlow
+SBATCH_ARGS="--partition=gpu --gpus=1" bash tutorials/run_on_slurm.sh
 ```
 
-Results are written under `runs/` in the folder the job is started from, and
-the datasets under `data/`. The perturbation notebook reads the 31 GB dataset
-into memory, so give it enough RAM. To shorten that notebook, set `CELL_TYPES`
-to a list of a few cell types; each held-out cell type trains one flow.
+`run_on_slurm.sh` builds a virtual environment in `tutorial_work/venv`,
+installs MultiFlow there, links or downloads the two datasets and submits the
+jobs. Each job first runs its notebook in quick mode, then with the settings of
+the paper, and copies the executed notebook, the metric tables and the figures
+to `tutorial_work/results/`.
 
-The optional scIB iLISI is reported when `scib` is installed
+| Variable | Meaning | Default |
+|---|---|---|
+| `SBATCH_ARGS` | partition, account and GPU type for `sbatch` | `--gpus=1` |
+| `PYTHON` or `CONDA_ENV` | a Python (or the name of a conda environment) that has PyTorch for the cluster's GPUs; nothing is installed into it | `python3` |
+| `WORK` | folder for data, runs and results | `tutorial_work` in the repository |
+| `OPENPROBLEM_H5MU`, `GSE274113_H5MU` | existing copies of the datasets, linked instead of downloaded | download |
+| `SBATCH_TIME`, `SBATCH_MEM`, `SBATCH_CPUS` | job size | `1-00:00:00`, `200G`, `6` |
+| `NOTEBOOKS` | which notebooks to run | both |
+
+```bash
+bash tutorials/run_on_slurm.sh status    # jobs, progress, and the metric tables once they exist
+bash tutorials/run_on_slurm.sh quick     # only the quick check, on this machine
+```
+
+Every step of a notebook writes a file and is skipped when that file exists.
+After a time-out or a failure, run the first command again: the new job
+continues where the old one stopped. A notebook that has finished, or whose job
+is still queued or running, is not submitted again. To shorten the perturbation notebook, set
+`CELL_TYPES` in its first cell to a few cell types; each held-out cell type
+trains one flow.
+
+## Full run by hand
+
+```bash
+cp tutorials/generation_openproblems.ipynb /path/with/space/ && cd /path/with/space
+jupyter nbconvert --to notebook --execute --inplace \
+  --ExecutePreprocessor.timeout=-1 generation_openproblems.ipynb
+```
+
+The perturbation notebook reads the 31 GB dataset into memory, so give it
+enough RAM. The optional scIB iLISI is reported when `scib` is installed
 (`pip install "multiflow-omics[ilisi]"`).
