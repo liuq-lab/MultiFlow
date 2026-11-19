@@ -213,3 +213,25 @@ def test_perturbation_debias_matches_training_only_mean_shift(tmp_path) -> None:
     assert np.allclose(np.asarray(result["atac"].X).mean(axis=0), [9.75])
     metadata = json.loads(result.uns["multiflow_debias"])
     assert metadata["method"] == "training_only_perturbation_mean_shift"
+
+
+def test_subset_cells_keeps_global_uns():
+    """mudata before 0.3 drops the global uns in views; the training fold needs it."""
+    import json
+
+    import anndata as ad
+    import mudata as md
+    import numpy as np
+
+    from multiflow_omics.paper import _subset_cells
+
+    names = [f"c{i}" for i in range(6)]
+    rna = ad.AnnData(np.ones((6, 3), dtype=np.float32))
+    atac = ad.AnnData(np.ones((6, 4), dtype=np.float32))
+    rna.obs_names = atac.obs_names = names
+    atac.var_names = [f"p{i}" for i in range(4)]
+    mdata = md.MuData({"rna": rna, "atac": atac})
+    mdata.uns["multiflow_encoder"] = json.dumps({"schema_version": 1})
+    subset = _subset_cells(mdata, names[:3])
+    assert subset.n_obs == 3
+    assert json.loads(subset.uns["multiflow_encoder"]) == {"schema_version": 1}

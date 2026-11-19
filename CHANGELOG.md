@@ -54,6 +54,13 @@ multiflow-omics` is all that is needed for both workflows of the paper.
 
 - The scripts in `workflows/`; their steps are functions of the package now.
 
+### Fixed
+
+- `prepare_perturbation_fold` and `split_h5mu` keep the global `uns` of the
+  input. With mudata older than 0.3 a cell subset lost it, and
+  `predict_perturbations` stopped with "reference H5MU has no
+  multiflow_encoder metadata".
+
 ## [0.1.0]
 
 Initial public version on GitHub (not released on PyPI).

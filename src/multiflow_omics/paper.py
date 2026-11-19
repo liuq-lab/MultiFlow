@@ -9,6 +9,7 @@ generated latents back to RNA and ATAC profiles.
 
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 from typing import Any
@@ -124,7 +125,7 @@ def split_h5mu(
     paths: dict[str, Path] = {}
     for split_name in ("train", "test"):
         selected = manifest.loc[manifest["split"] == split_name, "obs_name"].tolist()
-        subset = mdata[selected, :].copy()
+        subset = _subset_cells(mdata, selected)
         paths[split_name] = output / f"{split_name}.h5mu"
         prepare_h5mu_for_write(subset).write_h5mu(paths[split_name])
     metadata = {
@@ -370,6 +371,19 @@ def encode_paper_h5mu(
     return output
 
 
+def _subset_cells(mdata: Any, names: Any) -> Any:
+    """Copy of the given cells of a MuData, keeping the global ``uns``.
+
+    mudata before 0.3 does not carry ``uns`` into a view, so ``mdata[names, :].copy()``
+    loses it there.
+    """
+    subset = mdata[names, :].copy()
+    for key, value in mdata.uns.items():
+        if key not in subset.uns:
+            subset.uns[key] = copy.deepcopy(value)
+    return subset
+
+
 def prepare_perturbation_fold(
     *,
     input_path: str | Path,
@@ -402,7 +416,7 @@ def prepare_perturbation_fold(
     if not holdout.any():
         raise ValueError("the requested fold contains no held-out perturbed cells")
     train_names = np.asarray(mdata["rna"].obs_names.astype(str))[~holdout]
-    train = mdata[train_names, :].copy()
+    train = _subset_cells(mdata, train_names)
 
     rna = _dense_float32(train["rna"].obsm["X_multiflow"])
     atac = _dense_float32(train["atac"].obsm["X_multiflow"])
