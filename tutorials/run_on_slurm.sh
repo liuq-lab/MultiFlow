@@ -3,12 +3,14 @@
 #
 #   bash tutorials/run_on_slurm.sh           set up, then submit one GPU job per notebook
 #   bash tutorials/run_on_slurm.sh status    jobs, progress and results so far
-#   bash tutorials/run_on_slurm.sh quick     only the one-minute check on simulated data, on this machine
+#   bash tutorials/run_on_slurm.sh check     on this machine, a few minutes: installed versions, the layout of
+#                                            the data files, and each notebook in quick mode (simulated data)
+#   bash tutorials/run_on_slurm.sh quick     only the notebooks in quick mode
 #
-# Each job first runs the notebook in its quick mode (simulated data, about a minute), then with the
-# settings of the paper. Every step of a notebook writes a file and is skipped when the file exists, so
-# running the same command again after a time-out or a failure continues where the job stopped. A notebook
-# that has finished, or whose job is still queued or running, is not submitted again.
+# Each job first runs the notebook in its quick mode (simulated data, about a minute, in a fresh folder),
+# then with the settings of the paper. Every step of the full run writes a file and is skipped when the
+# file exists, so running the same command again after a time-out or a failure continues where the job
+# stopped. A notebook that has finished, or whose job is still queued or running, is not submitted again.
 #
 # Settings are environment variables; all are optional:
 #   PYTHON             Python that has PyTorch for the cluster's GPUs          (default: python3)
@@ -99,17 +101,163 @@ data() {
   done
 }
 
+versions() {   # the code and the libraries in use; printed at the start of every job
+  say "code: $(git -C "${REPO}" log -1 --format='%h %s' 2>/dev/null || echo 'unknown (not a git checkout)')"
+  "${PY}" - <<'EOF'
+import platform
+from importlib import metadata
+
+parts = [f"python {platform.python_version()}"]
+for name in ("multiflow-omics", "torch", "anndata", "mudata", "numpy", "pandas", "scipy", "h5py",
+             "scanpy", "scib"):
+    try:
+        parts.append(f"{name} {metadata.version(name)}")
+    except metadata.PackageNotFoundError:
+        parts.append(f"{name} -")
+print("[multiflow] versions: " + ", ".join(parts))
+EOF
+}
+
+inspect_data() {   # layout of the data files against what the notebooks expect; reads a small sample only
+  local nb name file src target bad=0
+  for nb in ${NOTEBOOKS}; do
+    read -r name file src <<< "$(dataset_of "${nb}")"
+    target="${WORK}/data/${file}"
+    if [[ ! -e "${target}" ]]; then target="${src}"; fi
+    if [[ -z "${target}" || ! -e "${target}" ]]; then
+      say "${file}: not here yet (it is linked or downloaded when the jobs are submitted)"
+      continue
+    fi
+    "${PY}" - "${target}" "${nb}" <<'EOF' || bad=1
+import sys
+
+import h5py
+import numpy as np
+
+path, notebook = sys.argv[1], sys.argv[2]
+ok = True
+total_gb = 0.0
+
+
+def text(values):
+    return np.array([v.decode() if isinstance(v, bytes) else str(v) for v in values], dtype=object)
+
+
+def sample(node, n=200_000):
+    """The first stored values of a matrix (sparse group or dense dataset)."""
+    data = node["data"] if isinstance(node, h5py.Group) else node
+    if data.ndim == 1:
+        return np.asarray(data[:n], dtype=np.float64)
+    rows = max(1, n // max(1, data.shape[1]))
+    return np.asarray(data[:rows], dtype=np.float64).ravel()
+
+
+def size_gb(node):
+    """Memory the matrix takes once it is read."""
+    if isinstance(node, h5py.Group):
+        return sum(node[k].size * node[k].dtype.itemsize for k in ("data", "indices", "indptr")) / 1e9
+    return node.size * node.dtype.itemsize / 1e9
+
+
+def describe(node):
+    global total_gb
+    values = sample(node)
+    gb = size_gb(node)
+    total_gb += gb
+    stored = "sparse" if isinstance(node, h5py.Group) else "dense"
+    if values.size == 0:
+        return f"empty, {stored}", False, False
+    integer = bool(np.all(np.abs(values - np.round(values)) < 1e-6) and values.min() >= 0)
+    binary = integer and bool(values.max() <= 1)
+    kind = "binary" if binary else ("integer counts" if integer else "not integer")
+    return f"{kind} (largest value in the sample: {values.max():g}), {stored}, {gb:.1f} GB in memory", integer, binary
+
+
+def column(obs, key):
+    """One annotation column as strings, read without loading anything else."""
+    node = obs[key]
+    if isinstance(node, h5py.Group) and "categories" in node:  # categorical: categories and codes
+        categories, codes = text(node["categories"][...]), np.asarray(node["codes"][...])
+        return np.where(codes >= 0, categories[np.clip(codes, 0, None)], "nan")
+    if isinstance(node, h5py.Group):  # nullable array: values and mask
+        return text(node["values"][...])
+    values = node[...]
+    legacy = obs.get("__categories")
+    if legacy is not None and key in legacy:
+        categories = text(legacy[key][...])
+        return np.where(values >= 0, categories[np.clip(values, 0, None)], "nan")
+    return text(values)
+
+
+print(f"[multiflow] {path}")
+with h5py.File(path, "r") as handle:
+    for modality, need in (("rna", "raw counts"), ("atac", "binary values")):
+        group = handle[f"mod/{modality}"]
+        shape = group["X"].attrs.get("shape", getattr(group["X"], "shape", "?"))
+        found, integer, binary = describe(group["X"])
+        good = integer if modality == "rna" else binary
+        ok = ok and good
+        print(f"[multiflow]   {modality}.X: {tuple(int(v) for v in shape)}, {found}; "
+              f"needed: {need}: {'ok' if good else 'NOT OK'}")
+        layers = group.get("layers")
+        for name in sorted(layers.keys()) if layers is not None else ():
+            print(f"[multiflow]   {modality}.layers[{name!r}]: {describe(layers[name])[0]}")
+    print(f"[multiflow]   all matrices together: about {total_gb:.0f} GB in memory when the file is read")
+    obs = handle["mod/rna/obs"]
+    columns = [k for k in obs.keys() if k not in ("_index", "__categories")]
+    print(f"[multiflow]   rna.obs columns: {', '.join(columns)}")
+    keys = ("cell_type", "perturbation") if notebook.startswith("perturbation") else ("cell_type",)
+    for key in keys:
+        if key not in obs:
+            ok = False
+            print(f"[multiflow]   rna.obs[{key!r}]: missing: NOT OK")
+            continue
+        labels, numbers = np.unique(column(obs, key), return_counts=True)
+        order = np.argsort(-numbers)
+        listed = ", ".join(f"{labels[i]} ({numbers[i]:,})" for i in order)
+        print(f"[multiflow]   rna.obs[{key!r}]: {int(numbers.sum()):,} cells, {len(labels)} values: {listed}")
+        if key == "perturbation" and "control" not in set(labels.tolist()):
+            ok = False
+            print("[multiflow]   rna.obs['perturbation'] has no 'control' label: NOT OK")
+print(f"[multiflow]   layout as the notebook expects: {'yes' if ok else 'NO'}")
+sys.exit(0 if ok else 3)
+EOF
+  done
+  return "${bad}"
+}
+
 execute() {   # execute <notebook file> <timeout in seconds, -1 for none>; runs in $WORK, results land there
   "${PY}" -m nbconvert --to notebook --execute --inplace \
     --ExecutePreprocessor.kernel_name="${KERNEL}" --ExecutePreprocessor.timeout="$2" "$1"
 }
 
-quick_check() {
-  local nb="$1"
-  cd "${WORK}"
-  cp "${REPO}/tutorials/${nb}.ipynb" "quick_${nb}.ipynb"
+quick_check() {   # the notebook in quick mode, in a fresh folder: no file of an earlier run or version is reused
+  local nb="$1" dir
+  mkdir -p "${WORK}"
+  dir="$(mktemp -d "${WORK}/quick_check_${nb%%_*}.XXXXXX")"
+  cp "${REPO}/tutorials/${nb}.ipynb" "${dir}/quick_${nb}.ipynb"
   say "quick check of ${nb} on simulated data"
-  MULTIFLOW_QUICK=1 execute "quick_${nb}.ipynb" 3600
+  if (cd "${dir}" && MULTIFLOW_QUICK=1 execute "quick_${nb}.ipynb" 3600); then
+    rm -rf "${dir}"
+    say "quick check of ${nb}: passed"
+  else
+    say "ERROR: the quick check of ${nb} failed; its files are kept in ${dir}" >&2
+    return 1
+  fi
+}
+
+check() {   # everything that can be checked in a few minutes without a GPU
+  local nb failed=0
+  versions
+  inspect_data || failed=1
+  for nb in ${NOTEBOOKS}; do
+    quick_check "${nb}" || failed=1
+  done
+  if [[ "${failed}" == 0 ]]; then
+    say "CHECK PASSED: versions, data layout and quick runs are fine"
+  else
+    die "CHECK FAILED: see the lines marked NOT OK or ERROR above"
+  fi
 }
 
 run() {   # inside the job
@@ -126,6 +274,7 @@ elif os.environ.get("ALLOW_CPU") != "1":
     sys.exit("[multiflow] ERROR: PyTorch sees no GPU in this job. Check SBATCH_ARGS and the Python in use, "
              "or set ALLOW_CPU=1 to run on the CPU anyway.")
 EOF
+  versions
   quick_check "${nb}"
   cp "${REPO}/tutorials/${nb}.ipynb" "${nb}.ipynb"
   say "full run of ${nb}"
@@ -164,12 +313,12 @@ submit() {
 }
 
 status() {
-  local nb task log file
+  local nb task name log file job state
   if command -v squeue >/dev/null; then
     squeue -u "${USER:-$(id -un)}" -o "%.10i %.16j %.9T %.11M %.11l %R" | awk 'NR == 1 || $2 ~ /^mf-/'
   fi
   for nb in ${NOTEBOOKS}; do
-    task="${nb%%_*}"
+    task="${nb%%_*}"; name="mf-${task}"
     echo
     if [[ -s "${WORK}/results/${nb}.ipynb" ]]; then
       say "${nb}: FINISHED; executed notebook: ${WORK}/results/${nb}.ipynb"
@@ -178,19 +327,38 @@ status() {
       done
       continue
     fi
-    say "${nb}: not finished"
+    job=""; state=""
+    if command -v squeue >/dev/null; then
+      read -r job state <<< "$(squeue -h -u "${USER:-$(id -un)}" -n "${name}" -o '%i %T' 2>/dev/null | head -n 1)" || true
+    fi
+    if [[ -z "${job}" ]]; then
+      say "${nb}: NOT FINISHED, and no job is queued or running; run the submit command again to continue"
+    elif [[ "${state}" == PENDING ]]; then
+      say "${nb}: job ${job} is WAITING in the queue; it has not started, so it has no log and no result yet"
+    else
+      say "${nb}: job ${job} is ${state}"
+    fi
     if [[ "${task}" == perturbation ]]; then
       say "held-out cell types done: $(find "${WORK}/runs/${task}/folds" -name metrics.csv 2>/dev/null | wc -l)"
     fi
-    log="$(ls -t "${WORK}/logs/${nb}"_*.log 2>/dev/null | head -n 1 || true)"
-    if [[ -n "${log}" ]]; then say "last lines of ${log}:"; tail -n 12 "${log}" | cut -c1-200; fi
+    if [[ -n "${job}" ]]; then   # only the log of the current job; an older log would describe an older run
+      log="${WORK}/logs/${nb}_${job}.log"
+      if [[ -s "${log}" ]]; then say "last lines of the log of job ${job}:"; tail -n 12 "${log}" | cut -c1-200; fi
+    else
+      log="$(ls -t "${WORK}/logs/${nb}"_*.log 2>/dev/null | head -n 1 || true)"
+      if [[ -n "${log}" ]]; then
+        job="${log##*_}"; job="${job%.log}"
+        say "last lines of the log of the last job (${job}, no longer running):"; tail -n 12 "${log}" | cut -c1-200
+      fi
+    fi
   done
 }
 
 case "${1:-submit}" in
   submit) setup; data; submit ;;
   status) status ;;
+  check)  if [[ ! -x "${PY}" ]]; then setup; fi; check ;;
   quick)  setup; for nb in ${NOTEBOOKS}; do quick_check "${nb}"; done; say "quick check passed" ;;
   run)    [[ $# -eq 2 ]] || die "usage: run <notebook>"; run "$2" ;;
-  *)      die "unknown command '$1' (use: submit, status, quick)" ;;
+  *)      die "unknown command '$1' (use: submit, status, check, quick)" ;;
 esac

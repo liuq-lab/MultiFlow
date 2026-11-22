@@ -39,9 +39,9 @@ SBATCH_ARGS="--partition=gpu --gpus=1" bash tutorials/run_on_slurm.sh
 
 `run_on_slurm.sh` builds a virtual environment in `tutorial_work/venv`,
 installs MultiFlow there, links or downloads the two datasets and submits the
-jobs. Each job first runs its notebook in quick mode, then with the settings of
-the paper, and copies the executed notebook, the metric tables and the figures
-to `tutorial_work/results/`.
+jobs. Each job first prints the library versions and runs its notebook in quick
+mode, then with the settings of the paper, and copies the executed notebook,
+the metric tables and the figures to `tutorial_work/results/`.
 
 | Variable | Meaning | Default |
 |---|---|---|
@@ -54,8 +54,15 @@ to `tutorial_work/results/`.
 
 ```bash
 bash tutorials/run_on_slurm.sh status    # jobs, progress, and the metric tables once they exist
-bash tutorials/run_on_slurm.sh quick     # only the quick check, on this machine
+bash tutorials/run_on_slurm.sh check     # a few minutes, no GPU: versions, layout of the data files, quick runs
+bash tutorials/run_on_slurm.sh quick     # only the quick runs, on this machine
 ```
+
+Run `check` before waiting for a GPU: it prints the installed library versions,
+compares the data files with what the notebooks expect (raw RNA counts in
+`rna.X`, binary `atac.X`, the `cell_type` and `perturbation` annotations), and
+runs both notebooks in quick mode in a fresh folder. `status` names the job it
+reports on; while a job waits in the queue there is no log to show.
 
 Every step of a notebook writes a file and is skipped when that file exists.
 After a time-out or a failure, run the first command again: the new job

@@ -70,6 +70,21 @@ def test_decoders_return_counts_and_probabilities() -> None:
     assert float(prob.min()) >= 0 and float(prob.max()) <= 1
 
 
+def test_sampled_rna_counts_follow_the_decoder_negative_binomial() -> None:
+    torch.manual_seed(0)
+    model = MultimodalAutoencoder(30, 50, rna_dims=(16, 8, 4), atac_dims=(24, 12, 4)).eval()
+    z = torch.randn(1, 4).repeat(20000, 1)
+    library = torch.full((20000, 1), 300.0)
+    with torch.no_grad():
+        mean = model.decode_rna(z[:1], library[:1])[0]
+        counts = model.sample_rna(z, library)
+        theta = torch.exp(model.theta)
+    assert torch.equal(counts, counts.round()) and (counts >= 0).all()
+    assert torch.allclose(counts.mean(0), mean, rtol=0.1, atol=0.05)
+    variance = mean + mean**2 / theta  # negative binomial: more spread than Poisson
+    assert torch.allclose(counts.var(0), variance, rtol=0.25, atol=0.1)
+
+
 def test_training_lowers_the_loss_and_is_reproducible() -> None:
     rna, atac = _profiles()
     config = AutoencoderConfig(

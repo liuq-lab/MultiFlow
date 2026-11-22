@@ -623,7 +623,12 @@ def _decode_latents(
     batch_size: int = 2048,
     seed: int = 0,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Decode latent states to RNA (expression or expected counts) and binary ATAC."""
+    """Decode latent states to RNA and binary ATAC.
+
+    Generation returns log-normalised expression. Perturbation returns counts drawn
+    from the negative binomial of the autoencoder, so that predicted cells carry the
+    same count noise as observed cells when the two are normalised and compared.
+    """
     from torch.distributions import Bernoulli, Normal
 
     torch.manual_seed(seed)
@@ -656,7 +661,7 @@ def _decode_latents(
                 neginf=1e-4,
             ).clamp_min(1e-4)
             library_size = torch.exp(Normal(mean, sd).sample()).view(-1, 1)
-            rna_out = model.decode_rna(z_rna, library_size)
+            rna_out = model.sample_rna(z_rna, library_size)
         rna_blocks.append(rna_out.cpu().numpy())
     return (
         np.concatenate(rna_blocks).astype(np.float32, copy=False),
@@ -681,7 +686,7 @@ def _profile_mudata(
     rna.uns["matrix_scale"] = (
         "log1p_normalized_1e4_reconstruction"
         if task == "generation"
-        else "raw_count_expectation"
+        else "raw_count_sample"
     )
     atac.uns["matrix_scale"] = "binary"
     return mu.MuData({"rna": rna, "atac": atac})

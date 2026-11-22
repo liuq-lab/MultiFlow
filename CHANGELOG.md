@@ -31,7 +31,9 @@ multiflow-omics` is all that is needed for both workflows of the paper.
 - Two tutorial notebooks in `tutorials/` that reproduce the generation and the
   perturbation benchmark from the raw data.
 - `tutorials/run_on_slurm.sh`: sets up an environment, links or downloads the
-  data and submits both notebooks as Slurm jobs with one command.
+  data and submits both notebooks as Slurm jobs with one command; `check`
+  reports the library versions and the layout of the data files and runs the
+  notebooks in quick mode without a GPU.
 - Commands `multiflow paper train-autoencoder`, `multiflow paper train-rna-vae`
   and `multiflow data split`.
 
@@ -49,6 +51,13 @@ multiflow-omics` is all that is needed for both workflows of the paper.
   concatenated RNA-ATAC latent space. Training and default sampling draw this
   source once and split it into modality coordinate blocks; the old two-call
   draw order remains available as `rng_mode="legacy_interleaved"`.
+- Perturbation RNA is decoded as counts drawn from the negative binomial of
+  the autoencoder (`MultimodalAutoencoder.sample_rna`), as in the code behind
+  the paper, and no longer as expected counts. Predicted cells then carry the
+  count noise of observed cells, which the metrics need because both are
+  normalised and compared: with expected counts the top-100 PCC-delta, delta
+  MSE and MMD of the perturbation tutorial were far from the values of the
+  paper. `uns["matrix_scale"]` of perturbation RNA is now `raw_count_sample`.
 
 ### Removed
 

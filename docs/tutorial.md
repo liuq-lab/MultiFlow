@@ -208,8 +208,9 @@ states of each modality: the mean effect of the perturbation in the training
 cells is added to the control mean of the held-out cell type, and the generated
 cells are moved so that their mean equals this target (`alpha=1` uses the full
 effect; `debias=False` switches the shift off). No perturbed cell of the
-held-out cell type is used. RNA is decoded as expected counts and ATAC as a
-binary sample.
+held-out cell type is used. RNA is decoded as counts drawn from the negative
+binomial of the autoencoder and ATAC as a binary sample, so predicted cells can
+be normalised and compared with observed cells in the same way.
 
 The three steps are also available one perturbation at a time as
 `mf.generate`, `mf.debias_perturbation` and `mf.decode`.

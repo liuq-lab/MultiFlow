@@ -149,7 +149,7 @@ def test_file_level_tables(tmp_path) -> None:
         peaks = sparse.csr_matrix((counts[:, :12] > 2).astype(np.float32))
         atac = ad.AnnData(peaks, obs=obs.copy())
         if expectation:
-            rna.uns["matrix_scale"] = "raw_count_expectation"
+            rna.uns["matrix_scale"] = "raw_count_sample"
         return rna, atac
 
     def stack(parts):

@@ -65,5 +65,5 @@ mapping, RNG mode, and whether latent standardization was inverted.
 
 `multiflow paper decode` then uses the exact matching checkpoint bundle to
 write biological profile matrices. Generation RNA is normalized-log
-reconstruction and perturbation RNA is a raw-count expectation; ATAC is binary
-in both tasks. A decoder must never be inferred from an unrelated H5MU file.
+reconstruction; perturbation RNA is raw counts drawn from the negative binomial
+of the autoencoder; ATAC is binary in both tasks. A decoder must never be inferred from an unrelated H5MU file.

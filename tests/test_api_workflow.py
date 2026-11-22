@@ -140,7 +140,10 @@ def test_perturbation_workflow_from_raw_profiles(raw, tmp_path) -> None:
     )
     decoded = mu.read_h5mu(profiles)
     assert decoded["rna"].shape == (6, 12) and decoded["atac"].shape == (6, 20)
-    assert decoded["rna"].uns["matrix_scale"] == "raw_count_expectation"
+    assert decoded["rna"].uns["matrix_scale"] == "raw_count_sample"
+    counts = np.asarray(decoded["rna"].X)
+    # sampled counts, not their expectation
+    assert (counts >= 0).all() and np.array_equal(counts, np.round(counts))
 
     # one call for the same perturbation gives the same cells as the three steps
     predicted = mf.predict_perturbations(

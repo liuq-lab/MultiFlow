@@ -150,6 +150,19 @@ class MultimodalAutoencoder(nn.Module):
         """Expected RNA counts: gene proportions times the library size."""
         return torch.softmax(self.decoder["rna"](z_rna), dim=1) * library_size
 
+    def sample_rna(self, z_rna: torch.Tensor, library_size: torch.Tensor) -> torch.Tensor:
+        """RNA counts drawn from the negative binomial of the decoder.
+
+        The mean is :meth:`decode_rna` and the inverse dispersion ``exp(theta)``, the
+        distribution the autoencoder is trained with. Sampled as a gamma-Poisson mixture.
+        """
+        mean = self.decode_rna(z_rna, library_size)
+        theta = torch.exp(self.theta)
+        rate = torch.distributions.Gamma(
+            concentration=theta, rate=theta / mean.clamp_min(1e-8)
+        ).sample()
+        return torch.poisson(rate.clamp(max=1e8))
+
     def decode_atac(self, z_atac: torch.Tensor) -> torch.Tensor:
         """Accessibility probability of every peak."""
         return torch.sigmoid(self.decoder["atac"](z_atac))
