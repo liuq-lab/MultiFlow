@@ -9,14 +9,14 @@ import pandas as pd
 import torch
 from scipy import sparse
 
-from multiflow_omics import cli
-from multiflow_omics.h5mu import prepare_h5mu_for_write
-from multiflow_omics.paper import (
+from multiflow import cli
+from multiflow.h5mu import prepare_h5mu_for_write
+from multiflow.paper import (
     _log_library_stats_by_class,
     debias_perturbation_h5mu,
     prepare_perturbation_fold,
 )
-from multiflow_omics.paper_encoders import RNAExpressionVAE
+from multiflow.paper_encoders import RNAExpressionVAE
 
 
 def test_cli_routes_perturbation_debias_to_paper_workflow(
@@ -223,7 +223,7 @@ def test_subset_cells_keeps_global_uns():
     import mudata as md
     import numpy as np
 
-    from multiflow_omics.paper import _subset_cells
+    from multiflow.paper import _subset_cells
 
     names = [f"c{i}" for i in range(6)]
     rna = ad.AnnData(np.ones((6, 3), dtype=np.float32))

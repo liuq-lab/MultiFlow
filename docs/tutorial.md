@@ -33,7 +33,7 @@ The full runs below were made on Linux with a CUDA GPU; every function takes
 `device="cuda"` or `device="cpu"` and uses the GPU by default when there is one.
 
 ```python
-import multiflow_omics as mf
+import multiflow as mf
 ```
 
 ## 2. Input

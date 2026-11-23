@@ -351,7 +351,7 @@ def _validate_data(args: argparse.Namespace) -> None:
     if not report["latent_ready"]:
         print(
             "note: raw paired data are valid, but encoder latents are absent; "
-            "run `multiflow paper encode` (or `multiflow_omics.encode`) before flow training"
+            "run `multiflow paper encode` (or `multiflow.encode`) before flow training"
         )
 
 

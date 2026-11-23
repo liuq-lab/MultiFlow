@@ -4,7 +4,7 @@ import hashlib
 
 import pytest
 
-from multiflow_omics.datasets import DATASETS, DatasetFile, verify_dataset_file
+from multiflow.datasets import DATASETS, DatasetFile, verify_dataset_file
 
 
 def test_dataset_file_verification(tmp_path):

@@ -6,7 +6,7 @@ import pytest
 import torch
 from scipy import sparse
 
-from multiflow_omics.autoencoder import (
+from multiflow.autoencoder import (
     AutoencoderConfig,
     MultimodalAutoencoder,
     config_from_state_dict,
@@ -17,7 +17,7 @@ from multiflow_omics.autoencoder import (
     negative_binomial_log_prob,
     save_autoencoder,
 )
-from multiflow_omics.metrics import log1p_cp10k
+from multiflow.metrics import log1p_cp10k
 
 
 def _profiles(n_cells: int = 96, n_genes: int = 30, n_peaks: int = 50, seed: int = 0):

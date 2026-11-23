@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from multiflow_omics import (
+from multiflow import (
     CellStateFlow,
     ConditionalConcatFlow,
     LatentStandardizer,

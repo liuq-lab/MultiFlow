@@ -13,7 +13,7 @@ multiflow-omics` is all that is needed for both workflows of the paper.
 
 ### Added
 
-- `multiflow_omics.autoencoder`: the paired RNA/ATAC autoencoder in plain
+- `multiflow.autoencoder`: the paired RNA/ATAC autoencoder in plain
   PyTorch, a port of the scDiffusion-X multimodal autoencoder. Parameter names
   are unchanged, so checkpoints written by scDiffusion-X load without
   conversion.
@@ -24,7 +24,7 @@ multiflow-omics` is all that is needed for both workflows of the paper.
 - `predict_perturbations`: sampling, training-only mean shift and decoding of
   several perturbations of a held-out cell type in one call.
 - `generate` accepts a mapping from cell type to number of cells.
-- `multiflow_omics.metrics`: the metrics of the paper for cell-state generation
+- `multiflow.metrics`: the metrics of the paper for cell-state generation
   (`evaluate_generation`) and perturbation prediction
   (`evaluate_perturbation`), without Scanpy or scikit-learn.
 - `simulate_h5mu` (a small simulated perturbation dataset) and `read_obs`.
@@ -39,6 +39,9 @@ multiflow-omics` is all that is needed for both workflows of the paper.
 
 ### Changed
 
+- The Python package is imported as `multiflow` (it was `multiflow_omics`):
+  `import multiflow as mf`. The distribution keeps the name `multiflow-omics`,
+  because the name `multiflow` on PyPI belongs to an unrelated project.
 - scDiffusion-X, scvi-tools, PyTorch Lightning, Hydra, PyYAML and Scanpy are no
   longer needed. The extras `paper` and `analysis` are gone; `notebooks`
   (figures in the tutorials) and `ilisi` (scIB iLISI) are new.

@@ -70,7 +70,7 @@ setup() {
   "${PY}" -m ipykernel install --prefix "${VENV}" --name "${KERNEL}" >/dev/null
   "${PY}" - <<'EOF'
 import importlib.util
-import multiflow_omics as mf
+import multiflow as mf
 import torch
 extras = {name: importlib.util.find_spec(name) is not None for name in ("scanpy", "scib")}
 print(f"[multiflow] multiflow-omics {mf.__version__}, torch {torch.__version__}; "
@@ -92,9 +92,9 @@ data() {
       say "linked ${file} -> ${src}"
     else
       say "downloading ${name} to ${target}"
-      "${PY}" -c "import multiflow_omics as mf; mf.download_dataset('${name}', r'${target}', accept_license=True)"
+      "${PY}" -c "import multiflow as mf; mf.download_dataset('${name}', r'${target}', accept_license=True)"
     fi
-    expected="$("${PY}" -c "from multiflow_omics.datasets import DATASETS; print(DATASETS['${name}'].size_bytes)")"
+    expected="$("${PY}" -c "from multiflow.datasets import DATASETS; print(DATASETS['${name}'].size_bytes)")"
     actual="$(stat -L -c %s "${target}")"
     [[ "${actual}" == "${expected}" ]] || die "${target} has ${actual} bytes, but the version used by the tutorial has ${expected}"
     say "${file}: size matches the pinned version (its checksum is verified inside the job)"

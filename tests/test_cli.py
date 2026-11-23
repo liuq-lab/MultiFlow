@@ -10,11 +10,11 @@ import pytest
 import torch
 from scipy import sparse
 
-from multiflow_omics import __version__
-from multiflow_omics.cli import _default_sampling_steps, _parser, main
-from multiflow_omics.h5mu import prepare_h5mu_for_write
-from multiflow_omics.legacy import migrate_legacy_checkpoint
-from multiflow_omics.models import ConditionalConcatFlow
+from multiflow import __version__
+from multiflow.cli import _default_sampling_steps, _parser, main
+from multiflow.h5mu import prepare_h5mu_for_write
+from multiflow.legacy import migrate_legacy_checkpoint
+from multiflow.models import ConditionalConcatFlow
 
 
 def _write_toy_h5mu(path) -> None:

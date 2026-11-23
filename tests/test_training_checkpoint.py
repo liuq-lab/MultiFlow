@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import torch
 
-from multiflow_omics import (
+from multiflow import (
     ConditionalConcatFlow,
     PerturbationFlow,
     TrainingConfig,

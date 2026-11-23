@@ -68,17 +68,17 @@ dev = [
 ]
 
 [project.scripts]
-multiflow = "multiflow_omics.cli:main"
-multiflow-omics = "multiflow_omics.cli:main"
+multiflow = "multiflow.cli:main"
+multiflow-omics = "multiflow.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.dynamic]
-version = {attr = "multiflow_omics._version.__version__"}
+version = {attr = "multiflow._version.__version__"}
 
 [tool.setuptools.package-data]
-multiflow_omics = ["py.typed"]
+multiflow = ["py.typed"]
 
 [tool.pytest.ini_options]
 addopts = "-ra"

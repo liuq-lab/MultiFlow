@@ -5,8 +5,8 @@ import re
 import pytest
 import torch
 
-import multiflow_omics
-from multiflow_omics import (
+import multiflow
+from multiflow import (
     BidirectionalCrossAttention,
     CellStateFlow,
     ConditionalConcatFlow,
@@ -76,8 +76,8 @@ def test_bidirectional_cross_attention_rejects_non_singleton_tokens_cleanly():
 
 
 def test_public_version_and_exports_are_available():
-    assert re.fullmatch(r"\d+\.\d+\.\d+(?:[a-z]+\d+)?", multiflow_omics.__version__)
-    assert multiflow_omics.CellStateFlow is CellStateFlow
+    assert re.fullmatch(r"\d+\.\d+\.\d+(?:[a-z]+\d+)?", multiflow.__version__)
+    assert multiflow.CellStateFlow is CellStateFlow
 
 
 def test_perturbation_context_width_and_values_are_validated():

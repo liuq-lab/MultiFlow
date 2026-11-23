@@ -2,8 +2,8 @@ import numpy as np
 import pytest
 from scipy import sparse
 
-import multiflow_omics as mf
-from multiflow_omics import metrics
+import multiflow as mf
+from multiflow import metrics
 
 
 def _cells(n: int, shift: float = 0.0, seed: int = 0, n_genes: int = 40) -> np.ndarray:

@@ -6,7 +6,7 @@ import mudata as mu
 import numpy as np
 import pytest
 
-import multiflow_omics as mf
+import multiflow as mf
 
 
 @pytest.fixture()

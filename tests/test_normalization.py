@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch
 
-from multiflow_omics import LatentStandardizer
+from multiflow import LatentStandardizer
 
 
 def test_standardizer_transform_inverse_round_trip():

@@ -4,7 +4,7 @@ Every function reads and writes files, returns the path it wrote, and records
 its settings next to the result, so a notebook and the ``multiflow`` command
 line produce the same artefacts::
 
-    import multiflow_omics as mf
+    import multiflow as mf
 
     ae = mf.train_autoencoder("train.h5mu", "runs/autoencoder")
     mf.encode("train.h5mu", "train_encoded.h5mu", task="perturbation", autoencoder=ae)

@@ -23,7 +23,7 @@ For a rehearsal, do the same at <https://test.pypi.org> with workflow
 
 ## 2. Before a release
 
-1. Set the version in `src/multiflow_omics/_version.py` and `CITATION.cff`,
+1. Set the version in `src/multiflow/_version.py` and `CITATION.cff`,
    and move the entries of `CHANGELOG.md` under that version.
 2. Check locally:
 

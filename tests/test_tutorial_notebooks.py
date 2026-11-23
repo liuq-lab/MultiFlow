@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-import multiflow_omics as mf
+import multiflow as mf
 
 TUTORIALS = Path(__file__).resolve().parents[1] / "tutorials"
 NOTEBOOKS = sorted(TUTORIALS.glob("*.ipynb"))

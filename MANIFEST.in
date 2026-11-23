@@ -4,7 +4,7 @@ include CITATION.cff
 include CONTRIBUTING.md
 include SECURITY.md
 include THIRD_PARTY_NOTICES.md
-recursive-include src/multiflow_omics py.typed
+recursive-include src/multiflow py.typed
 recursive-include docs *.md
 recursive-include examples *.py
 recursive-include tests *.py

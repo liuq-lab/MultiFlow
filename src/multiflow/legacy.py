@@ -2,7 +2,7 @@
 
 Historical research scripts used several checkpoint envelopes and internal
 module names.  This module converts those files into the portable checkpoint
-format implemented by :mod:`multiflow_omics.checkpoint`.  Loading is restricted
+format implemented by :mod:`multiflow.checkpoint`.  Loading is restricted
 to PyTorch's ``weights_only`` mode unless the caller explicitly confirms that
 the source is trusted.
 """

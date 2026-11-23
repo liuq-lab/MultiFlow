@@ -59,7 +59,7 @@ CLI round trips.
   paired autoencoder. Perturbation uses the paired autoencoder for both raw
   RNA counts and binary ATAC. These task-specific scales are not interchangeable.
 - The release includes the audited RNA VAE architecture and a port of the
-  scDiffusion-X multimodal autoencoder (`multiflow_omics.autoencoder`). The
+  scDiffusion-X multimodal autoencoder (`multiflow.autoencoder`). The
   port keeps the layer layout and parameter names, so a checkpoint written by
   scDiffusion-X loads without conversion. With the same seed and inputs, the
   port and the original modules give identical initial weights, latent states

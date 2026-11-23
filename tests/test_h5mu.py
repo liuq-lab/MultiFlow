@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from multiflow_omics.h5mu import (
+from multiflow.h5mu import (
     prepare_h5mu_for_write,
     read_paired_latents,
     validate_h5mu,

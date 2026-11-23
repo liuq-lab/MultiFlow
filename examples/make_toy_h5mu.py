@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from multiflow_omics.h5mu import write_toy_h5mu
+from multiflow.h5mu import write_toy_h5mu
 
 
 def main() -> None:

@@ -2,7 +2,7 @@
 
 Two tables can be reproduced with this module::
 
-    import multiflow_omics as mf
+    import multiflow as mf
 
     # cell-state generation: generated against observed profiles, per modality
     mf.metrics.evaluate_generation("test.h5mu", "generated_profiles.h5mu")
@@ -498,7 +498,7 @@ def evaluate_generation(
     """Generation metrics for RNA and ATAC, as in Fig. 2 of the paper.
 
     ``real`` holds observed raw profiles and ``generated`` the output of
-    :func:`multiflow_omics.decode`; each is a path to an H5MU file or a MuData.
+    :func:`multiflow.decode`; each is a path to an H5MU file or a MuData.
     The same number of observed and generated cells is drawn for every cell
     type (at most ``max_per_label``, and ``max_total`` in total) before the
     metrics of :func:`generation_metrics` are computed. Returns a data frame
@@ -553,7 +553,7 @@ def evaluate_perturbation(
 
     ``real`` holds the observed raw RNA counts (path, MuData or the RNA
     AnnData) and ``predicted`` the output of
-    :func:`multiflow_omics.predict_perturbations`. For every perturbation with
+    :func:`multiflow.predict_perturbations`. For every perturbation with
     at least ``min_cells`` observed and predicted cells, the predicted cells
     are compared with the observed ones by :func:`perturbation_metrics`.
     Returns a data frame with one row per perturbation; the column ``top_genes``

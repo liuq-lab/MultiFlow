@@ -6,7 +6,7 @@ import pytest
 import torch
 import torch.nn as nn
 
-from multiflow_omics import LatentStandardizer, sample_paired_latents
+from multiflow import LatentStandardizer, sample_paired_latents
 
 
 class ZeroVelocity(nn.Module):

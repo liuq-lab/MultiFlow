@@ -10,7 +10,7 @@ dataset hosted on Figshare (DOI `10.6084/m9.figshare.28582061.v3`, file ID
 included in this repository or Python distribution.
 
 The paired residual and bidirectional cross-attention architecture in
-`src/multiflow_omics/models.py` was adapted from the scDiffusion-X multimodal
+`src/multiflow/models.py` was adapted from the scDiffusion-X multimodal
 backbone and the corresponding MultiFlow research implementation. The audited
 upstream revision was:
 
@@ -19,7 +19,7 @@ upstream revision was:
 - relevant package source:
   `scdiffusionX/src/scdiffusionX/DiffusionBackbone/`
 
-The paired RNA/ATAC autoencoder in `src/multiflow_omics/autoencoder.py` is a
+The paired RNA/ATAC autoencoder in `src/multiflow/autoencoder.py` is a
 port of the multimodal autoencoder of the same scDiffusion-X revision (relevant
 source: `scdiffusionX/src/scdiffusionX/Autoencoder/`, in particular
 `models/base/encoder_model.py`, `models/base/utils.py` and
@@ -35,8 +35,8 @@ should be confirmed with the upstream maintainers. Until then, both notices are
 retained for the adapted portions.
 
 The RNA VAE architecture and SCimilarity checkpoint-loading rules in
-`src/multiflow_omics/paper_encoders.py` and its training loop in
-`src/multiflow_omics/paper.py` were adapted from the scDiffusion repository:
+`src/multiflow/paper_encoders.py` and its training loop in
+`src/multiflow/paper.py` were adapted from the scDiffusion repository:
 
 - scDiffusion, <https://github.com/EperLuo/scDiffusion>
 - relevant source: `VAE/VAE_model.py`, `VAE/VAE_train.py` and

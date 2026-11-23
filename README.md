@@ -24,7 +24,7 @@ pip install multiflow-omics
 ```
 
 Python 3.10 or newer and PyTorch 2.1 or newer. Nothing else has to be cloned or
-installed. The package is imported as `multiflow_omics` and its command is
+installed. The package is imported as `multiflow` and its command is
 `multiflow` (the name `multiflow` on PyPI belongs to an unrelated project).
 
 The development version installs from GitHub:
@@ -40,7 +40,7 @@ perturbation dataset, holds out the perturbed cells of one cell type, predicts
 them and scores the prediction.
 
 ```python
-import multiflow_omics as mf
+import multiflow as mf
 
 data = mf.simulate_h5mu("demo/cells.h5mu")                      # 2,400 simulated cells
 small = dict(rna_dims=(128, 64, 16), atac_dims=(128, 64, 16))   # the paper uses the defaults
